@@ -1,0 +1,121 @@
+---
+alwaysApply: true
+---
+
+# Ruby Coding Conventions
+
+## Naming Conventions
+
+- Use `snake_case` for method and variable names
+- Use `PascalCase` for class and module names
+- Use `SCREAMING_SNAKE_CASE` for constants
+
+## Documentation
+
+- All code comments, CHANGELOG, README, and other documentation must be written in English
+- Use YARD-style documentation for public methods
+- Include examples in documentation when appropriate
+
+## Code Organization
+
+- Each class should be in its own file
+- Follow the single responsibility principle
+- Use modules for shared functionality (like ContextualLogger)
+
+## Error Handling
+
+- Use custom error classes that inherit from the base Error class
+- Return Result objects for operations that can fail
+- Handle exceptions gracefully and provide meaningful error messages
+
+## Method Structure
+
+- Public methods should be well-documented
+- Private methods should be clearly marked with `private`
+- Use descriptive method names that explain what they do
+
+## Testing
+
+- Use RSpec for testing
+- Test both success and failure cases
+- Use descriptive test names that explain the expected behavior
+- Mock external dependencies appropriately
+
+## Dependencies
+
+- Prefer standard library when possible
+- Use well-maintained gems for complex functionality
+- Keep dependencies minimal and justified
+
+## Result Pattern
+
+Use the Result pattern for operations that can fail:
+
+```ruby
+def some_operation
+  # success case
+  Result.success(data)
+rescue => e
+  # failure case  
+  Result.failure(e.message)
+end
+```
+
+# Ruby Coding Conventions
+
+## Naming Conventions
+
+- Use `snake_case` for method and variable names
+- Use `PascalCase` for class and module names
+- Use `SCREAMING_SNAKE_CASE` for constants
+
+## Documentation
+
+- All code comments, CHANGELOG, README, and other documentation must be written in English
+- Use YARD-style documentation for public methods
+- Include examples in documentation when appropriate
+
+## Code Organization
+
+- Each class should be in its own file
+- Follow the single responsibility principle
+- Use modules for shared functionality (like ContextualLogger)
+
+## Error Handling
+
+- Use custom error classes that inherit from the base Error class
+- Return Result objects for operations that can fail
+- Handle exceptions gracefully and provide meaningful error messages
+
+## Method Structure
+
+- Public methods should be well-documented
+- Private methods should be clearly marked with `private`
+- Use descriptive method names that explain what they do
+
+## Testing
+
+- Use RSpec for testing
+- Test both success and failure cases
+- Use descriptive test names that explain the expected behavior
+- Mock external dependencies appropriately
+
+## Dependencies
+
+- Prefer standard library when possible
+- Use well-maintained gems for complex functionality
+- Keep dependencies minimal and justified
+
+## Result Pattern
+
+Use the Result pattern for operations that can fail:
+
+```ruby
+def some_operation
+  # success case
+  Result.success(data)
+rescue => e
+  # failure case  
+  Result.failure(e.message)
+end
+```

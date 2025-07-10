@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+rm -rf ox-tender-abstract-*.gem
+gem build ox-tender-abstract.gemspec
+gem uninstall ox-tender-abstract -x
+gem install ox-tender-abstract-*.gem

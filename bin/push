@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+rm -rf ox-tender-abstract-*.gem
+gem build ox-tender-abstract.gemspec
+gem push ox-tender-abstract-*.gem

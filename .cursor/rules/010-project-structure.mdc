@@ -1,0 +1,11 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Overview
+
+## Code Conventions
+
+- Use `snake_case` for method and variable names
+- All code comments, CHANGELOG, README, and other documentation must be written in English

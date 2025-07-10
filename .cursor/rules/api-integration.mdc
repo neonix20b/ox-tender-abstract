@@ -1,0 +1,63 @@
+# Zakupki.gov.ru API Integration Guide
+
+## SOAP API Workflow
+
+1. **Authentication**: Use `individualPerson_token` header
+2. **Request**: Call `get_docs_by_org_region` or `get_docs_by_reestr_number`
+3. **Response**: Receive archive URLs in SOAP response
+4. **Download**: Fetch archives (GZIP compressed ZIP files)
+5. **Extract**: Decompress GZIP → Extract ZIP → Parse XML files
+
+## Key API Methods
+
+- `get_docs_by_org_region` - Search by region and date
+- `get_docs_by_reestr_number` - Search by registry number
+
+## Document Types ([document_types.rb](mdc:lib/oxtenderabstract/document_types.rb))
+
+- **PRIZ**: Procurement procedures (default)
+- **RPEC**: Registry of procurement participants  
+- **RCON**: Registry of contracts
+- **Other**: Various subsystem types
+
+## XML Structure Handling
+
+- Use multiple XPath expressions for reliability
+- Handle namespaces properly with `extract_namespaces`
+- Support both namespaced (ns5:) and non-namespaced elements
+- Extract dates, prices, and text with specific helper methods
+
+## Archive Processing
+
+- Support GZIP and ZIP formats
+- Limit file sizes (100MB max)
+- Handle network errors gracefully
+- Extract all XML files from archives
+
+## Error Handling Patterns
+
+```ruby
+# Network errors
+rescue SocketError, Timeout::Error => e
+  Result.failure("Network error: #{e.message}")
+
+# SOAP errors  
+rescue Savon::SOAPFault => e
+  Result.failure("SOAP Fault: #{e.message}")
+
+# Archive errors
+rescue Zip::Error => e
+  raise ArchiveError, "ZIP extraction error: #{e.message}"
+```
+
+## Configuration Requirements
+
+- API token is required for authentication
+- Configurable timeouts for network operations
+- SSL verification can be disabled for testing
+- Logger for debugging API interactions
+description:
+globs:
+alwaysApply: false
+
+---

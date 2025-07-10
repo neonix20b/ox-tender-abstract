@@ -1,0 +1,113 @@
+---
+alwaysApply: true
+---
+
+# OxTenderAbstract Project Structure
+
+This is a Ruby gem for working with Russian tender system (zakupki.gov.ru) SOAP API.
+
+## Main Entry Point
+
+The main entry point is [lib/ox-tender-abstract.rb](mdc:lib/ox-tender-abstract.rb), which loads all modules and provides convenience methods.
+
+## Core Architecture
+
+### Main Library Modules (lib/oxtenderabstract/)
+
+- [client.rb](mdc:lib/oxtenderabstract/client.rb) - Main SOAP API client with search and download methods
+- [xml_parser.rb](mdc:lib/oxtenderabstract/xml_parser.rb) - XML document parser for tender data extraction
+- [archive_processor.rb](mdc:lib/oxtenderabstract/archive_processor.rb) - Archive download and extraction (GZIP/ZIP)
+- [result.rb](mdc:lib/oxtenderabstract/result.rb) - Result wrapper for success/failure responses
+- [configuration.rb](mdc:lib/oxtenderabstract/configuration.rb) - Library configuration and global settings
+- [errors.rb](mdc:lib/oxtenderabstract/errors.rb) - Custom error classes hierarchy
+- [document_types.rb](mdc:lib/oxtenderabstract/document_types.rb) - Constants for API document types
+- [logger.rb](mdc:lib/oxtenderabstract/logger.rb) - Contextual logging module
+- [version.rb](mdc:lib/oxtenderabstract/version.rb) - Gem version definition
+
+### Tests Structure (spec/)
+
+- [spec/spec_helper.rb](mdc:spec/spec_helper.rb) - RSpec configuration and setup
+- [spec/oxtenderabstract_spec.rb](mdc:spec/oxtenderabstract_spec.rb) - Main module tests
+- [spec/oxtenderabstract/](mdc:spec/oxtenderabstract/) - Individual module tests
+
+### Configuration Files
+
+- [ox-tender-abstract.gemspec](mdc:ox-tender-abstract.gemspec) - Gem specification and dependencies
+- [Gemfile](mdc:Gemfile) - Development dependencies
+- [README.md](mdc:README.md) - Project documentation
+
+## Data Flow
+
+1. **API Request**: Client → SOAP API → Archive URLs
+2. **Archive Processing**: ArchiveProcessor → Download → Extract (GZIP→ZIP→XML)
+3. **XML Parsing**: XmlParser → Structured tender data
+4. **Result**: Result wrapper with success/failure status
+
+## Key Dependencies
+
+- `savon` - SOAP client
+- `nokogiri` - XML parsing
+- `rubyzip` - ZIP archive handling
+- `net-http` - HTTP client
+
+## Usage Pattern
+
+```ruby
+OxTenderAbstract.configure { |config| config.token = 'token' }
+result = OxTenderAbstract.search_tenders(org_region: '77', exact_date: '2024-01-01')
+```
+
+# OxTenderAbstract Project Structure
+
+This is a Ruby gem for working with Russian tender system (zakupki.gov.ru) SOAP API.
+
+## Main Entry Point
+
+The main entry point is [lib/ox-tender-abstract.rb](mdc:lib/ox-tender-abstract.rb), which loads all modules and provides convenience methods.
+
+## Core Architecture
+
+### Main Library Modules (lib/oxtenderabstract/)
+
+- [client.rb](mdc:lib/oxtenderabstract/client.rb) - Main SOAP API client with search and download methods
+- [xml_parser.rb](mdc:lib/oxtenderabstract/xml_parser.rb) - XML document parser for tender data extraction
+- [archive_processor.rb](mdc:lib/oxtenderabstract/archive_processor.rb) - Archive download and extraction (GZIP/ZIP)
+- [result.rb](mdc:lib/oxtenderabstract/result.rb) - Result wrapper for success/failure responses
+- [configuration.rb](mdc:lib/oxtenderabstract/configuration.rb) - Library configuration and global settings
+- [errors.rb](mdc:lib/oxtenderabstract/errors.rb) - Custom error classes hierarchy
+- [document_types.rb](mdc:lib/oxtenderabstract/document_types.rb) - Constants for API document types
+- [logger.rb](mdc:lib/oxtenderabstract/logger.rb) - Contextual logging module
+- [version.rb](mdc:lib/oxtenderabstract/version.rb) - Gem version definition
+
+### Tests Structure (spec/)
+
+- [spec/spec_helper.rb](mdc:spec/spec_helper.rb) - RSpec configuration and setup
+- [spec/oxtenderabstract_spec.rb](mdc:spec/oxtenderabstract_spec.rb) - Main module tests
+- [spec/oxtenderabstract/](mdc:spec/oxtenderabstract/) - Individual module tests
+
+### Configuration Files
+
+- [ox-tender-abstract.gemspec](mdc:ox-tender-abstract.gemspec) - Gem specification and dependencies
+- [Gemfile](mdc:Gemfile) - Development dependencies
+- [README.md](mdc:README.md) - Project documentation
+
+## Data Flow
+
+1. **API Request**: Client → SOAP API → Archive URLs
+2. **Archive Processing**: ArchiveProcessor → Download → Extract (GZIP→ZIP→XML)
+3. **XML Parsing**: XmlParser → Structured tender data
+4. **Result**: Result wrapper with success/failure status
+
+## Key Dependencies
+
+- `savon` - SOAP client
+- `nokogiri` - XML parsing
+- `rubyzip` - ZIP archive handling
+- `net-http` - HTTP client
+
+## Usage Pattern
+
+```ruby
+OxTenderAbstract.configure { |config| config.token = 'token' }
+result = OxTenderAbstract.search_tenders(org_region: '77', exact_date: '2024-01-01')
+```
