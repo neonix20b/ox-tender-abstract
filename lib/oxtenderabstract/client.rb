@@ -137,6 +137,80 @@ module OxTenderAbstract
                      })
     end
 
+    # Enhanced search tenders with detailed information extraction
+    def enhanced_search_tenders(org_region:, exact_date:, subsystem_type: DocumentTypes::DEFAULT_SUBSYSTEM,
+                                document_type: DocumentTypes::DEFAULT_DOCUMENT_TYPE,
+                                include_attachments: true)
+      log_info "Starting enhanced tender search for region #{org_region}, date #{exact_date}"
+
+      # Step 1: Get archive URLs from API
+      api_result = get_docs_by_region(
+        org_region: org_region,
+        subsystem_type: subsystem_type,
+        document_type: document_type,
+        exact_date: exact_date
+      )
+
+      return api_result if api_result.failure?
+
+      archive_urls = api_result.data[:archive_urls]
+      return Result.success({ tenders: [], total_archives: 0, total_files: 0 }) if archive_urls.empty?
+
+      log_info "Found #{archive_urls.size} archives to process"
+
+      # Step 2: Process each archive with detailed information extraction
+      all_tenders = []
+      total_files = 0
+
+      archive_urls.each_with_index do |archive_url, index|
+        log_info "Processing archive #{index + 1}/#{archive_urls.size}"
+
+        archive_result = download_archive_data(archive_url)
+        next if archive_result.failure?
+
+        files = archive_result.data[:files]
+        total_files += files.size
+
+        # Step 3: Parse XML files from archive with enhanced data extraction
+        xml_files = files.select { |name, _| name.downcase.end_with?('.xml') }
+
+        xml_files.each do |file_name, file_data|
+          parse_result = parse_xml_document(file_data[:content])
+          next if parse_result.failure?
+          next unless parse_result.data[:document_type] == :tender
+
+          tender_data = parse_result.data[:content]
+          next if tender_data[:reestr_number].nil? || tender_data[:reestr_number].empty?
+
+          # Step 4: Extract additional detailed information
+          if include_attachments
+            attachments_result = extract_attachments_from_xml(file_data[:content])
+            if attachments_result.success?
+              tender_data[:attachments] = attachments_result.data[:attachments]
+              tender_data[:attachments_count] = attachments_result.data[:total_count]
+            end
+          end
+
+          # Add metadata
+          tender_data[:source_file] = file_name
+          tender_data[:archive_url] = archive_url
+          tender_data[:processed_at] = Time.now
+
+          all_tenders << tender_data
+        end
+      end
+
+      log_info "Enhanced search completed. Found #{all_tenders.size} tenders in #{total_files} files"
+
+      Result.success({
+                       tenders: all_tenders,
+                       total_archives: archive_urls.size,
+                       total_files: total_files,
+                       processed_at: Time.now,
+                       enhanced: true
+                     })
+    end
+
     private
 
     def validate_token!

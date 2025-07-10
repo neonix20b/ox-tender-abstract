@@ -25,6 +25,12 @@ module OxTenderAbstract
     client.search_tenders(org_region: org_region, exact_date: exact_date, **options)
   end
 
+  # Enhanced search tenders with detailed information (convenience method)
+  def self.enhanced_search_tenders(org_region:, exact_date:, token: nil, **options)
+    client = Client.new(token: token)
+    client.enhanced_search_tenders(org_region: org_region, exact_date: exact_date, **options)
+  end
+
   # Get documents by registry number (convenience method)
   def self.get_docs_by_reestr_number(reestr_number:, token: nil, **options)
     client = Client.new(token: token)
