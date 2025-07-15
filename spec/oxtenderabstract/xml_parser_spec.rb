@@ -172,6 +172,8 @@ RSpec.describe OxTenderAbstract::XmlParser do
         first_object = purchase_objects[:objects].first
         expect(first_object[:sid]).to eq('186548938')
         expect(first_object[:name]).to eq('Ванна моечная для пищеблока')
+        expect(first_object[:product_name]).to eq('Ванна моечная для пищеблока')
+        expect(first_object[:name_type]).to eq('product_name')
         expect(first_object[:price]).to eq('66500')
         expect(first_object[:quantity]).to eq(10)
         expect(first_object[:sum]).to eq('665000')
@@ -191,6 +193,61 @@ RSpec.describe OxTenderAbstract::XmlParser do
 
         # Check restrictions
         expect(first_object[:restrictions][:is_preference_rf]).to be true
+      end
+
+      it 'correctly identifies product names vs characteristics' do
+        characteristic_xml = <<~XML
+          <?xml version="1.0" encoding="UTF-8"?>
+          <ns3:export xmlns:ns3="http://zakupki.gov.ru/oos/export/1" xmlns:ns5="http://zakupki.gov.ru/oos/EPtypes/1" xmlns:ns4="http://zakupki.gov.ru/oos/common/1" xmlns:ns2="http://zakupki.gov.ru/oos/base/1">
+            <ns3:epNotificationEF2020>
+              <ns5:commonInfo>
+                <ns5:purchaseNumber>0373200593425000054</ns5:purchaseNumber>
+              </ns5:commonInfo>
+              <ns5:notificationInfo>
+                <ns5:purchaseObjectsInfo>
+                  <ns5:notDrugPurchaseObjectsInfo>
+                    <ns4:purchaseObject>
+                      <ns4:name>Соответствие требованиям ТЗ</ns4:name>
+                      <ns4:OKPD2>
+                        <ns2:OKPDCode>20.59.52.199</ns2:OKPDCode>
+                        <ns2:OKPDName>Реагенты сложные диагностические</ns2:OKPDName>
+                      </ns4:OKPD2>
+                      <ns4:price>1000</ns4:price>
+                      <ns4:type>PRODUCT</ns4:type>
+                    </ns4:purchaseObject>
+                    <ns4:purchaseObject>
+                      <ns4:KTRU>
+                        <ns2:code>21.20.23.110-00005860</ns2:code>
+                        <ns2:name>Скрытая кровь в кале ИВД, набор</ns2:name>
+                      </ns4:KTRU>
+                      <ns4:name>Количество выполняемых тестов</ns4:name>
+                      <ns4:price>2000</ns4:price>
+                      <ns4:type>PRODUCT</ns4:type>
+                    </ns4:purchaseObject>
+                  </ns5:notDrugPurchaseObjectsInfo>
+                </ns5:purchaseObjectsInfo>
+              </ns5:notificationInfo>
+            </ns3:epNotificationEF2020>
+          </ns3:export>
+        XML
+
+        result = parser.parse(characteristic_xml)
+        expect(result).to be_success
+
+        objects = result.data[:content][:purchase_objects][:objects]
+        expect(objects.size).to eq(2)
+
+        # First object: name is characteristic, product_name comes from OKPD2
+        first_object = objects.first
+        expect(first_object[:name]).to eq('Соответствие требованиям ТЗ')
+        expect(first_object[:name_type]).to eq('characteristic')
+        expect(first_object[:product_name]).to eq('Реагенты сложные диагностические')
+
+        # Second object: name is characteristic, product_name comes from KTRU (priority)
+        second_object = objects.last
+        expect(second_object[:name]).to eq('Количество выполняемых тестов')
+        expect(second_object[:name_type]).to eq('characteristic')
+        expect(second_object[:product_name]).to eq('Скрытая кровь в кале ИВД, набор')
       end
 
       it 'handles tender without purchase objects' do

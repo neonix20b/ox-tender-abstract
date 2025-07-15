@@ -593,7 +593,54 @@ module OxTenderAbstract
         }
       end
 
+      # Determine the actual product name from available sources
+      # Priority: KTRU name > OKPD2 name > name field
+      product_name = nil
+      product_name = if object_data[:ktru] && object_data[:ktru][:name] && !object_data[:ktru][:name].empty?
+                       object_data[:ktru][:name]
+                     elsif object_data[:okpd2] && object_data[:okpd2][:name] && !object_data[:okpd2][:name].empty?
+                       object_data[:okpd2][:name]
+                     else
+                       object_data[:name]
+                     end
+
+      object_data[:product_name] = product_name
+
+      # Add field description indicating what the 'name' field actually contains
+      object_data[:name_type] = determine_name_type(object_data[:name])
+
       object_data.compact
+    end
+
+    private
+
+    def determine_name_type(name)
+      return nil unless name
+
+      # Common patterns that indicate this is a characteristic, not a product name
+      characteristic_patterns = [
+        /соответствие\s+требованиям/i,
+        /минимальный\s+.*срок/i,
+        /количество\s+/i,
+        /размер\s+/i,
+        /объем\s+/i,
+        /вес\s+/i,
+        /цвет\s+/i,
+        /материал\s+/i,
+        /тип\s+/i,
+        /класс\s+/i,
+        /группа\s+/i,
+        /категория\s+/i,
+        /способ\s+/i,
+        /метод\s+/i,
+        /технология\s+/i
+      ]
+
+      if characteristic_patterns.any? { |pattern| name.match?(pattern) }
+        'characteristic'
+      else
+        'product_name'
+      end
     end
 
     def extract_guarantee_info(doc, namespaces)
