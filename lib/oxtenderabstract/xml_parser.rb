@@ -408,8 +408,11 @@ module OxTenderAbstract
     def extract_price_from_text(text)
       return nil if text.nil? || text.empty?
 
+      # Remove currency symbols and text like 'руб.', 'рублей' etc.
+      cleaned = text.gsub(/[а-яё]+\.?/i, '').strip
+
       # Remove any non-digit characters except decimal separator and spaces
-      cleaned = text.gsub(/[^\d\s.,]/, '').strip
+      cleaned = cleaned.gsub(/[^\d\s.,]/, '').strip
       return nil if cleaned.empty?
 
       # Remove spaces (used as thousand separators in Russian format)
@@ -522,10 +525,13 @@ module OxTenderAbstract
 
     def extract_purchase_object_data(object_node, namespaces)
       # Basic object information
+      # CRITICAL FIX: Extract name that's direct child of purchaseObject, not from characteristics
+      direct_name = object_node.xpath('./ns4:name | ./name', namespaces).first&.text&.strip
+
       object_data = {
         sid: extract_text_from_node(object_node, './/ns4:sid | .//sid'),
         external_sid: extract_text_from_node(object_node, './/ns4:externalSid | .//externalSid'),
-        name: extract_text_from_node(object_node, './/ns4:name | .//name'),
+        name: direct_name,
         price: extract_price_from_text(extract_text_from_node(object_node, './/ns4:price | .//price')),
         quantity: extract_text_from_node(object_node, './/ns4:quantity/ns4:value | .//quantity/value')&.to_i,
         sum: extract_price_from_text(extract_text_from_node(object_node, './/ns4:sum | .//sum')),
@@ -573,7 +579,7 @@ module OxTenderAbstract
         }
       end
 
-      # Extract characteristics (simplified - just count and basic info)
+      # Extract characteristics (detailed extraction)
       characteristics_nodes = object_node.xpath(
         './/ns4:characteristics//ns4:characteristicsUsingReferenceInfo | .//characteristics//characteristicsUsingReferenceInfo', namespaces
       )
@@ -582,32 +588,46 @@ module OxTenderAbstract
       )
 
       if characteristics_nodes.any?
+        characteristics_details = characteristics_nodes.map do |char_node|
+          char_data = {
+            name: extract_text_from_node(char_node, './/ns4:name | .//name'),
+            type: extract_text_from_node(char_node, './/ns4:type | .//type')
+          }
+
+          # Extract values from text form characteristics
+          values_nodes = char_node.xpath('.//ns4:values/ns4:value | .//values/value', namespaces)
+          if values_nodes.any?
+            char_data[:values] = values_nodes.map do |value_node|
+              extract_text_from_node(value_node, './/ns4:qualityDescription | .//qualityDescription') ||
+                extract_text_from_node(value_node, './/ns4:textValue | .//textValue')
+            end.compact
+          end
+
+          char_data
+        end
+
         object_data[:characteristics] = {
           count: characteristics_nodes.size,
-          details: characteristics_nodes.first(5).map do |char_node|
-            {
-              name: extract_text_from_node(char_node, './/ns4:name | .//name'),
-              type: extract_text_from_node(char_node, './/ns4:type | .//type')
-            }
-          end
+          details: characteristics_details
         }
       end
 
       # Determine the actual product name from available sources
-      # Priority: KTRU name > OKPD2 name > name field
-      product_name = nil
-      product_name = if object_data[:ktru] && object_data[:ktru][:name] && !object_data[:ktru][:name].empty?
+      # Priority: Direct name field (now fixed) > KTRU name > OKPD2 name
+      product_name = if object_data[:name] && !object_data[:name].empty?
+                       object_data[:name]
+                     elsif object_data[:ktru] && object_data[:ktru][:name] && !object_data[:ktru][:name].empty?
                        object_data[:ktru][:name]
                      elsif object_data[:okpd2] && object_data[:okpd2][:name] && !object_data[:okpd2][:name].empty?
                        object_data[:okpd2][:name]
                      else
-                       object_data[:name]
+                       'Unknown product'
                      end
 
       object_data[:product_name] = product_name
 
-      # Add field description indicating what the 'name' field actually contains
-      object_data[:name_type] = determine_name_type(object_data[:name])
+      # Now the name field should contain actual product names, not characteristics
+      object_data[:name_type] = 'product_name'
 
       object_data.compact
     end

@@ -207,10 +207,16 @@ RSpec.describe OxTenderAbstract::XmlParser do
                 <ns5:purchaseObjectsInfo>
                   <ns5:notDrugPurchaseObjectsInfo>
                     <ns4:purchaseObject>
-                      <ns4:name>Соответствие требованиям ТЗ</ns4:name>
+                      <ns4:name>Реагенты сложные диагностические</ns4:name>
                       <ns4:OKPD2>
                         <ns2:OKPDCode>20.59.52.199</ns2:OKPDCode>
                         <ns2:OKPDName>Реагенты сложные диагностические</ns2:OKPDName>
+                        <ns4:characteristics>
+                          <ns4:characteristicsUsingTextForm>
+                            <ns4:name>Соответствие требованиям ТЗ</ns4:name>
+                            <ns4:type>1</ns4:type>
+                          </ns4:characteristicsUsingTextForm>
+                        </ns4:characteristics>
                       </ns4:OKPD2>
                       <ns4:price>1000</ns4:price>
                       <ns4:type>PRODUCT</ns4:type>
@@ -220,7 +226,13 @@ RSpec.describe OxTenderAbstract::XmlParser do
                         <ns2:code>21.20.23.110-00005860</ns2:code>
                         <ns2:name>Скрытая кровь в кале ИВД, набор</ns2:name>
                       </ns4:KTRU>
-                      <ns4:name>Количество выполняемых тестов</ns4:name>
+                      <ns4:name>Скрытая кровь в кале ИВД, набор</ns4:name>
+                      <ns4:characteristics>
+                        <ns4:characteristicsUsingTextForm>
+                          <ns4:name>Количество выполняемых тестов</ns4:name>
+                          <ns4:type>2</ns4:type>
+                        </ns4:characteristicsUsingTextForm>
+                      </ns4:characteristics>
                       <ns4:price>2000</ns4:price>
                       <ns4:type>PRODUCT</ns4:type>
                     </ns4:purchaseObject>
@@ -237,16 +249,16 @@ RSpec.describe OxTenderAbstract::XmlParser do
         objects = result.data[:content][:purchase_objects][:objects]
         expect(objects.size).to eq(2)
 
-        # First object: name is characteristic, product_name comes from OKPD2
+        # First object: name now contains actual product name (fixed!)
         first_object = objects.first
-        expect(first_object[:name]).to eq('Соответствие требованиям ТЗ')
-        expect(first_object[:name_type]).to eq('characteristic')
+        expect(first_object[:name]).to eq('Реагенты сложные диагностические')
+        expect(first_object[:name_type]).to eq('product_name')
         expect(first_object[:product_name]).to eq('Реагенты сложные диагностические')
 
-        # Second object: name is characteristic, product_name comes from KTRU (priority)
+        # Second object: name contains actual product name from KTRU
         second_object = objects.last
-        expect(second_object[:name]).to eq('Количество выполняемых тестов')
-        expect(second_object[:name_type]).to eq('characteristic')
+        expect(second_object[:name]).to eq('Скрытая кровь в кале ИВД, набор')
+        expect(second_object[:name_type]).to eq('product_name')
         expect(second_object[:product_name]).to eq('Скрытая кровь в кале ИВД, набор')
       end
 
