@@ -330,6 +330,7 @@ module OxTenderAbstract
       tender_data[:procedure_info] = extract_procedure_info(doc, namespaces)
       tender_data[:lot_info] = extract_lot_information(doc, namespaces)
       tender_data[:guarantee_info] = extract_guarantee_info(doc, namespaces)
+      tender_data[:purchase_objects] = extract_purchase_objects_info(doc, namespaces)
 
       # Clean up empty values
       tender_data.compact
@@ -407,11 +408,14 @@ module OxTenderAbstract
     def extract_price_from_text(text)
       return nil if text.nil? || text.empty?
 
-      # Remove any non-digit characters except decimal separator
-      cleaned = text.gsub(/[^\d.,]/, '')
+      # Remove any non-digit characters except decimal separator and spaces
+      cleaned = text.gsub(/[^\d\s.,]/, '').strip
       return nil if cleaned.empty?
 
-      # Convert to string with proper decimal separator
+      # Remove spaces (used as thousand separators in Russian format)
+      cleaned = cleaned.tr(' ', '')
+
+      # Convert comma to dot for decimal separator
       result = cleaned.tr(',', '.')
       return result if result =~ /^\d+(\.\d+)?$/
 
@@ -472,6 +476,124 @@ module OxTenderAbstract
       end
 
       { lots: lots, lots_count: lots.size }
+    end
+
+    def extract_purchase_objects_info(doc, namespaces)
+      purchase_objects = []
+      total_sum = nil
+
+      begin
+        # Find purchase objects nodes - use more defensive approach
+        purchase_object_nodes = doc.xpath(
+          '//ns5:purchaseObjectsInfo//ns4:purchaseObject | //purchaseObjectsInfo//purchaseObject', namespaces
+        )
+
+        purchase_objects = purchase_object_nodes.map do |object_node|
+          extract_purchase_object_data(object_node, namespaces)
+        end.compact
+
+        # Extract total sum from purchaseObjectsInfo
+        total_sum = extract_price_from_text(find_text_with_namespaces(doc, [
+                                                                        '//ns5:purchaseObjectsInfo//ns4:totalSum',
+                                                                        '//purchaseObjectsInfo//totalSum',
+                                                                        '//ns5:notDrugPurchaseObjectsInfo/ns4:totalSum',
+                                                                        '//notDrugPurchaseObjectsInfo/totalSum'
+                                                                      ], namespaces))
+
+        # Extract quantity undefined flag
+        quantity_undefined = find_text_with_namespaces(doc, [
+                                                         '//ns5:purchaseObjectsInfo//ns5:quantityUndefined',
+                                                         '//purchaseObjectsInfo//quantityUndefined'
+                                                       ], namespaces) == 'true'
+
+        return {} if purchase_objects.empty? && total_sum.nil?
+
+        {
+          objects: purchase_objects,
+          objects_count: purchase_objects.size,
+          total_sum: total_sum,
+          quantity_undefined: quantity_undefined
+        }.compact
+      rescue StandardError => e
+        log_debug "Error extracting purchase objects: #{e.message}"
+        {}
+      end
+    end
+
+    def extract_purchase_object_data(object_node, namespaces)
+      # Basic object information
+      object_data = {
+        sid: extract_text_from_node(object_node, './/ns4:sid | .//sid'),
+        external_sid: extract_text_from_node(object_node, './/ns4:externalSid | .//externalSid'),
+        name: extract_text_from_node(object_node, './/ns4:name | .//name'),
+        price: extract_price_from_text(extract_text_from_node(object_node, './/ns4:price | .//price')),
+        quantity: extract_text_from_node(object_node, './/ns4:quantity/ns4:value | .//quantity/value')&.to_i,
+        sum: extract_price_from_text(extract_text_from_node(object_node, './/ns4:sum | .//sum')),
+        type: extract_text_from_node(object_node, './/ns4:type | .//type'),
+        hierarchy_type: extract_text_from_node(object_node, './/ns4:hierarchyType | .//hierarchyType'),
+        volume_specifying_method: extract_text_from_node(object_node,
+                                                         './/ns4:volumeSpecifyingMethod | .//volumeSpecifyingMethod')
+      }
+
+      # KTRU information
+      ktru_node = object_node.at_xpath('.//ns4:KTRU | .//KTRU', namespaces)
+      if ktru_node
+        object_data[:ktru] = {
+          code: extract_text_from_node(ktru_node, './/ns2:code | .//code'),
+          name: extract_text_from_node(ktru_node, './/ns2:name | .//name'),
+          version_id: extract_text_from_node(ktru_node, './/ns2:versionId | .//versionId'),
+          version_number: extract_text_from_node(ktru_node, './/ns2:versionNumber | .//versionNumber')
+        }
+      end
+
+      # OKPD2 information
+      okpd2_node = object_node.at_xpath('.//ns4:OKPD2 | .//OKPD2', namespaces)
+      if okpd2_node
+        object_data[:okpd2] = {
+          code: extract_text_from_node(okpd2_node, './/ns2:OKPDCode | .//OKPDCode'),
+          name: extract_text_from_node(okpd2_node, './/ns2:OKPDName | .//OKPDName')
+        }
+      end
+
+      # OKEI information (units of measurement)
+      okei_node = object_node.at_xpath('.//ns4:OKEI | .//OKEI', namespaces)
+      if okei_node
+        object_data[:okei] = {
+          code: extract_text_from_node(okei_node, './/ns2:code | .//code'),
+          national_code: extract_text_from_node(okei_node, './/ns2:nationalCode | .//nationalCode'),
+          name: extract_text_from_node(okei_node, './/ns2:name | .//name')
+        }
+      end
+
+      # Restrictions info
+      restrictions_node = object_node.at_xpath('.//ns4:restrictionsInfo | .//restrictionsInfo', namespaces)
+      if restrictions_node
+        object_data[:restrictions] = {
+          is_preference_rf: extract_text_from_node(restrictions_node, './/ns4:isPreferenseRFPurchaseObjects | .//isPreferenseRFPurchaseObjects') == 'true'
+        }
+      end
+
+      # Extract characteristics (simplified - just count and basic info)
+      characteristics_nodes = object_node.xpath(
+        './/ns4:characteristics//ns4:characteristicsUsingReferenceInfo | .//characteristics//characteristicsUsingReferenceInfo', namespaces
+      )
+      characteristics_nodes += object_node.xpath(
+        './/ns4:characteristics//ns4:characteristicsUsingTextForm | .//characteristics//characteristicsUsingTextForm', namespaces
+      )
+
+      if characteristics_nodes.any?
+        object_data[:characteristics] = {
+          count: characteristics_nodes.size,
+          details: characteristics_nodes.first(5).map do |char_node|
+            {
+              name: extract_text_from_node(char_node, './/ns4:name | .//name'),
+              type: extract_text_from_node(char_node, './/ns4:type | .//type')
+            }
+          end
+        }
+      end
+
+      object_data.compact
     end
 
     def extract_guarantee_info(doc, namespaces)

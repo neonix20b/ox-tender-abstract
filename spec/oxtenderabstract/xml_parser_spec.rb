@@ -98,6 +98,122 @@ RSpec.describe OxTenderAbstract::XmlParser do
       end
     end
 
+    context 'with tender document containing purchase objects' do
+      let(:tender_with_objects_xml) do
+        <<~XML
+          <?xml version="1.0" encoding="UTF-8"?>
+          <ns3:export xmlns:ns3="http://zakupki.gov.ru/oos/export/1" xmlns:ns5="http://zakupki.gov.ru/oos/EPtypes/1" xmlns:ns4="http://zakupki.gov.ru/oos/common/1" xmlns:ns2="http://zakupki.gov.ru/oos/base/1">
+            <ns3:epNotificationEF2020>
+              <ns5:commonInfo>
+                <ns5:purchaseNumber>0373200592025000025</ns5:purchaseNumber>
+                <ns5:purchaseObjectInfo>Электронный аукцион на поставку тумбы с ванной моечной</ns5:purchaseObjectInfo>
+              </ns5:commonInfo>
+              <ns5:notificationInfo>
+                <ns5:purchaseObjectsInfo>
+                  <ns5:notDrugPurchaseObjectsInfo>
+                    <ns4:purchaseObject>
+                      <ns4:sid>186548938</ns4:sid>
+                      <ns4:externalSid>217455879-1616303245</ns4:externalSid>
+                      <ns4:KTRU>
+                        <ns2:code>25.99.11.132-00000001</ns2:code>
+                        <ns2:name>Ванна моечная для пищеблока</ns2:name>
+                        <ns2:versionId>108402</ns2:versionId>
+                        <ns2:versionNumber>1</ns2:versionNumber>
+                      </ns4:KTRU>
+                      <ns4:name>Ванна моечная для пищеблока</ns4:name>
+                      <ns4:OKEI>
+                        <ns2:code>796</ns2:code>
+                        <ns2:nationalCode>шт</ns2:nationalCode>
+                        <ns2:name>Штука</ns2:name>
+                      </ns4:OKEI>
+                      <ns4:price>66500</ns4:price>
+                      <ns4:quantity>
+                        <ns4:value>10</ns4:value>
+                      </ns4:quantity>
+                      <ns4:sum>665000</ns4:sum>
+                      <ns4:type>PRODUCT</ns4:type>
+                      <ns4:hierarchyType>ND</ns4:hierarchyType>
+                      <ns4:OKPD2>
+                        <ns2:OKPDCode>25.99.11.132</ns2:OKPDCode>
+                        <ns2:OKPDName>Ванны из нержавеющей стали</ns2:OKPDName>
+                      </ns4:OKPD2>
+                      <ns4:restrictionsInfo>
+                        <ns4:isPreferenseRFPurchaseObjects>true</ns4:isPreferenseRFPurchaseObjects>
+                      </ns4:restrictionsInfo>
+                    </ns4:purchaseObject>
+                    <ns4:totalSum>665000</ns4:totalSum>
+                    <ns5:quantityUndefined>false</ns5:quantityUndefined>
+                  </ns5:notDrugPurchaseObjectsInfo>
+                </ns5:purchaseObjectsInfo>
+              </ns5:notificationInfo>
+            </ns3:epNotificationEF2020>
+          </ns3:export>
+        XML
+      end
+
+      it 'parses purchase objects successfully' do
+        result = parser.parse(tender_with_objects_xml)
+
+        expect(result).to be_success
+        expect(result.data[:document_type]).to eq(:tender)
+
+        content = result.data[:content]
+        expect(content[:reestr_number]).to eq('0373200592025000025')
+        expect(content[:title]).to eq('Электронный аукцион на поставку тумбы с ванной моечной')
+
+        # Check purchase objects
+        purchase_objects = content[:purchase_objects]
+        expect(purchase_objects).to be_a(Hash)
+        expect(purchase_objects[:objects_count]).to eq(1)
+        expect(purchase_objects[:total_sum]).to eq('665000')
+        expect(purchase_objects[:quantity_undefined]).to be false
+
+        # Check first object details
+        first_object = purchase_objects[:objects].first
+        expect(first_object[:sid]).to eq('186548938')
+        expect(first_object[:name]).to eq('Ванна моечная для пищеблока')
+        expect(first_object[:price]).to eq('66500')
+        expect(first_object[:quantity]).to eq(10)
+        expect(first_object[:sum]).to eq('665000')
+        expect(first_object[:type]).to eq('PRODUCT')
+
+        # Check KTRU information
+        expect(first_object[:ktru][:code]).to eq('25.99.11.132-00000001')
+        expect(first_object[:ktru][:name]).to eq('Ванна моечная для пищеблока')
+
+        # Check OKEI information
+        expect(first_object[:okei][:code]).to eq('796')
+        expect(first_object[:okei][:name]).to eq('Штука')
+
+        # Check OKPD2 information
+        expect(first_object[:okpd2][:code]).to eq('25.99.11.132')
+        expect(first_object[:okpd2][:name]).to eq('Ванны из нержавеющей стали')
+
+        # Check restrictions
+        expect(first_object[:restrictions][:is_preference_rf]).to be true
+      end
+
+      it 'handles tender without purchase objects' do
+        simple_xml = <<~XML
+          <?xml version="1.0" encoding="UTF-8"?>
+          <ns3:export xmlns:ns3="http://zakupki.gov.ru/oos/export/1" xmlns:ns5="http://zakupki.gov.ru/oos/EPtypes/1">
+            <ns3:epNotificationEF2020>
+              <ns5:commonInfo>
+                <ns5:purchaseNumber>0123456789012345678</ns5:purchaseNumber>
+                <ns5:purchaseObjectInfo>Simple Tender</ns5:purchaseObjectInfo>
+              </ns5:commonInfo>
+            </ns3:epNotificationEF2020>
+          </ns3:export>
+        XML
+
+        result = parser.parse(simple_xml)
+
+        expect(result).to be_success
+        content = result.data[:content]
+        expect(content[:purchase_objects]).to eq({})
+      end
+    end
+
     context 'with contract document' do
       let(:contract_xml) do
         <<~XML
