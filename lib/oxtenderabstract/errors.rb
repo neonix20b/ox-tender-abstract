@@ -7,18 +7,30 @@ module OxTenderAbstract
   # Configuration related errors
   class ConfigurationError < Error; end
 
+  # API related errors
+  class ApiError < Error; end
+
+  # Archive processing errors
+  class ArchiveError < Error; end
+
+  # XML parsing errors
+  class ParseError < Error; end
+
   # Network related errors
   class NetworkError < Error; end
 
-  # SOAP API related errors
-  class SoapError < Error; end
+  # Archive download blocked error (10 minute block)
+  class ArchiveBlockedError < ArchiveError
+    attr_reader :blocked_until, :retry_after_seconds
 
-  # XML parsing related errors
-  class ParseError < Error; end
+    def initialize(message = 'Archive download blocked', retry_after_seconds = 600)
+      super(message)
+      @retry_after_seconds = retry_after_seconds
+      @blocked_until = Time.now + retry_after_seconds
+    end
 
-  # Archive processing related errors
-  class ArchiveError < Error; end
-
-  # Authentication related errors
-  class AuthenticationError < Error; end
+    def can_retry_at
+      @blocked_until
+    end
+  end
 end

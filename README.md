@@ -273,6 +273,41 @@ puts result.data[:total_archives] # => 6
 # Processing typically takes 10-15 seconds for a full day's data
 ```
 
+## Error Handling
+
+The library uses the `Result` pattern for error handling:
+
+```ruby
+result = OxTenderAbstract.search_tenders(org_region: '77', exact_date: '2024-01-01')
+
+if result.success?
+  puts "Found tenders: #{result.data[:tenders].size}"
+else
+  puts "Error: #{result.error}"
+  
+  # Check error type for special handling
+  if result.metadata[:error_type] == :blocked
+    retry_after = result.metadata[:retry_after] || 600
+    puts "API blocked for #{retry_after} seconds"
+  end
+end
+```
+
+### Handling API Blocks
+
+When making frequent requests, the API may block archive downloads for 10 minutes. The library automatically detects such blocks:
+
+```ruby
+result = OxTenderAbstract.search_tenders(org_region: '77', exact_date: '2024-01-01')
+
+if result.failure? && result.metadata[:error_type] == :blocked
+  retry_after = result.metadata[:retry_after] # 600 seconds (10 minutes)
+  puts "Download blocked, retry in #{retry_after} seconds"
+end
+```
+
+For detailed guidance on using with Sidekiq background jobs, see [SIDEKIQ_USAGE.md](SIDEKIQ_USAGE.md).
+
 ## Requirements
 
 - Ruby >= 3.0.0

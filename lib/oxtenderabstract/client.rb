@@ -77,7 +77,7 @@ module OxTenderAbstract
     # Search tenders with full workflow: API -> Archive -> Parse
     def search_tenders(org_region:, exact_date:, subsystem_type: DocumentTypes::DEFAULT_SUBSYSTEM,
                        document_type: DocumentTypes::DEFAULT_DOCUMENT_TYPE)
-      log_info "Starting tender search for region #{org_region}, date #{exact_date}"
+      log_info "Starting tender search for region #{org_region}, date #{exact_date}, subsystem: #{subsystem_type}, type: #{document_type}"
 
       # Step 1: Get archive URLs from API
       api_result = get_docs_by_region(
@@ -94,44 +94,69 @@ module OxTenderAbstract
 
       log_info "Found #{archive_urls.size} archives to process"
 
-      # Step 2: Process each archive
+      # Step 2: Process each archive with error resilience
       all_tenders = []
       total_files = 0
+      processed_archives = 0
+      failed_archives = 0
 
       archive_urls.each_with_index do |archive_url, index|
         log_info "Processing archive #{index + 1}/#{archive_urls.size}"
 
-        archive_result = download_archive_data(archive_url)
-        next if archive_result.failure?
+        begin
+          archive_result = download_archive_data(archive_url)
 
-        files = archive_result.data[:files]
-        total_files += files.size
+          if archive_result.failure?
+            log_error "Failed to download archive #{index + 1}: #{archive_result.error}"
+            failed_archives += 1
+            next
+          end
 
-        # Step 3: Parse XML files from archive
-        xml_files = files.select { |name, _| name.downcase.end_with?('.xml') }
+          processed_archives += 1
+          files = archive_result.data[:files]
+          total_files += files.size
 
-        xml_files.each do |file_name, file_data|
-          parse_result = parse_xml_document(file_data[:content])
-          next if parse_result.failure?
-          next unless parse_result.data[:document_type] == :tender
+          # Step 3: Parse XML files from archive
+          xml_files = files.select { |name, _| name.downcase.end_with?('.xml') }
+          log_debug "Found #{xml_files.size} XML files in archive #{index + 1}"
 
-          tender_data = parse_result.data[:content]
-          next if tender_data[:reestr_number].nil? || tender_data[:reestr_number].empty?
+          xml_files.each do |file_name, file_data|
+            parse_result = parse_xml_document(file_data[:content])
 
-          # Add metadata
-          tender_data[:source_file] = file_name
-          tender_data[:archive_url] = archive_url
-          tender_data[:processed_at] = Time.now
+            if parse_result.failure?
+              log_debug "Failed to parse #{file_name}: #{parse_result.error}"
+              next
+            end
 
-          all_tenders << tender_data
+            next unless parse_result.data[:document_type] == :tender
+
+            tender_data = parse_result.data[:content]
+            next if tender_data[:reestr_number].nil? || tender_data[:reestr_number].empty?
+
+            # Add metadata
+            tender_data[:source_file] = file_name
+            tender_data[:archive_url] = archive_url
+            tender_data[:processed_at] = Time.now
+
+            all_tenders << tender_data
+          rescue StandardError => e
+            log_error "Error processing file #{file_name}: #{e.message}"
+            # Continue with other files
+          end
+        rescue StandardError => e
+          log_error "Critical error processing archive #{index + 1}: #{e.message}"
+          failed_archives += 1
+          # Continue with other archives
         end
       end
 
-      log_info "Search completed. Found #{all_tenders.size} tenders in #{total_files} files"
+      log_info "Search completed. Processed: #{processed_archives}/#{archive_urls.size} archives, Failed: #{failed_archives}, Found #{all_tenders.size} tenders in #{total_files} files"
 
       Result.success({
                        tenders: all_tenders,
                        total_archives: archive_urls.size,
+                       processed_archives: processed_archives,
+                       failed_archives: failed_archives,
                        total_files: total_files,
                        processed_at: Time.now
                      })
@@ -208,6 +233,131 @@ module OxTenderAbstract
                        total_files: total_files,
                        processed_at: Time.now,
                        enhanced: true
+                     })
+    end
+
+    # Search tenders with automatic resume capability
+    # Позволяет продолжить загрузку с места паузы при блокировках API
+    def search_tenders_with_resume(org_region:, exact_date:, subsystem_type: DocumentTypes::DEFAULT_SUBSYSTEM,
+                                   document_type: DocumentTypes::DEFAULT_DOCUMENT_TYPE,
+                                   start_from_archive: 0, resume_state: nil)
+      log_info "Starting tender search with resume capability for region #{org_region}, date #{exact_date}"
+      log_info "Starting from archive #{start_from_archive}" if start_from_archive > 0
+
+      # Восстанавливаем состояние если есть
+      if resume_state
+        log_info "Resuming from previous state: #{resume_state[:processed_archives]} archives processed"
+        all_tenders = resume_state[:tenders] || []
+        total_files = resume_state[:total_files] || 0
+        processed_archives = resume_state[:processed_archives] || 0
+        failed_archives = resume_state[:failed_archives] || 0
+        archive_urls = resume_state[:archive_urls]
+      else
+        # Step 1: Get archive URLs from API
+        api_result = get_docs_by_region(
+          org_region: org_region,
+          subsystem_type: subsystem_type,
+          document_type: document_type,
+          exact_date: exact_date
+        )
+
+        return api_result if api_result.failure?
+
+        archive_urls = api_result.data[:archive_urls]
+        return Result.success({ tenders: [], total_archives: 0, total_files: 0 }) if archive_urls.empty?
+
+        all_tenders = []
+        total_files = 0
+        processed_archives = 0
+        failed_archives = 0
+      end
+
+      log_info "Found #{archive_urls.size} archives to process (starting from #{start_from_archive})"
+
+      # Step 2: Process archives starting from specified position
+      (start_from_archive...archive_urls.size).each do |index|
+        archive_url = archive_urls[index]
+        log_info "Processing archive #{index + 1}/#{archive_urls.size}"
+
+        begin
+          archive_result = download_archive_data(archive_url)
+
+          if archive_result.failure?
+            # Проверяем, была ли блокировка с автоматическим ожиданием
+            if archive_result.metadata[:error_type] == :blocked &&
+               !OxTenderAbstract.configuration.auto_wait_on_block
+              # Возвращаем состояние для возможности продолжения
+              resume_state = {
+                tenders: all_tenders,
+                total_files: total_files,
+                processed_archives: processed_archives,
+                failed_archives: failed_archives,
+                archive_urls: archive_urls,
+                next_archive_index: index
+              }
+
+              return Result.failure(
+                "Archive download blocked, can resume from archive #{index + 1}",
+                error_type: :blocked,
+                retry_after: 600,
+                resume_state: resume_state
+              )
+            else
+              log_error "Failed to download archive #{index + 1}: #{archive_result.error}"
+              failed_archives += 1
+              next
+            end
+          end
+
+          processed_archives += 1
+          files = archive_result.data[:files]
+          total_files += files.size
+
+          # Step 3: Parse XML files from archive
+          xml_files = files.select { |name, _| name.downcase.end_with?('.xml') }
+          log_debug "Found #{xml_files.size} XML files in archive #{index + 1}"
+
+          xml_files.each do |file_name, file_data|
+            parse_result = parse_xml_document(file_data[:content])
+
+            if parse_result.failure?
+              log_debug "Failed to parse #{file_name}: #{parse_result.error}"
+              next
+            end
+
+            next unless parse_result.data[:document_type] == :tender
+
+            tender_data = parse_result.data[:content]
+            next if tender_data[:reestr_number].nil? || tender_data[:reestr_number].empty?
+
+            # Add metadata
+            tender_data[:source_file] = file_name
+            tender_data[:archive_url] = archive_url
+            tender_data[:processed_at] = Time.now
+            tender_data[:archive_index] = index
+
+            all_tenders << tender_data
+          rescue StandardError => e
+            log_error "Error processing file #{file_name}: #{e.message}"
+            # Continue with other files
+          end
+        rescue StandardError => e
+          log_error "Critical error processing archive #{index + 1}: #{e.message}"
+          failed_archives += 1
+          # Continue with other archives
+        end
+      end
+
+      log_info "Search completed. Processed: #{processed_archives}/#{archive_urls.size} archives, Failed: #{failed_archives}, Found #{all_tenders.size} tenders in #{total_files} files"
+
+      Result.success({
+                       tenders: all_tenders,
+                       total_archives: archive_urls.size,
+                       processed_archives: processed_archives,
+                       failed_archives: failed_archives,
+                       total_files: total_files,
+                       processed_at: Time.now,
+                       completed: true
                      })
     end
 

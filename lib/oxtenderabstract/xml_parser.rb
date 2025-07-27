@@ -486,36 +486,57 @@ module OxTenderAbstract
       total_sum = nil
 
       begin
-        # Find purchase objects nodes - use more defensive approach
+        # Find purchase objects nodes - including drug and non-drug objects
+        # Regular purchase objects
         purchase_object_nodes = doc.xpath(
           '//ns5:purchaseObjectsInfo//ns4:purchaseObject | //purchaseObjectsInfo//purchaseObject', namespaces
         )
 
+        # Drug purchase objects (лекарственные препараты)
+        drug_object_nodes = doc.xpath(
+          '//ns5:drugPurchaseObjectsInfo//ns4:drugPurchaseObjectInfo | //drugPurchaseObjectsInfo//drugPurchaseObjectInfo', namespaces
+        )
+
+        # Process regular purchase objects
         purchase_objects = purchase_object_nodes.map do |object_node|
           extract_purchase_object_data(object_node, namespaces)
         end.compact
 
-        # Extract total sum from purchaseObjectsInfo
+        # Process drug purchase objects
+        drug_objects = drug_object_nodes.map do |drug_node|
+          extract_drug_purchase_object_data(drug_node, namespaces)
+        end.compact
+
+        # Combine all objects
+        all_objects = purchase_objects + drug_objects
+
+        # Extract total sum from various sources
         total_sum = extract_price_from_text(find_text_with_namespaces(doc, [
                                                                         '//ns5:purchaseObjectsInfo//ns4:totalSum',
                                                                         '//purchaseObjectsInfo//totalSum',
                                                                         '//ns5:notDrugPurchaseObjectsInfo/ns4:totalSum',
-                                                                        '//notDrugPurchaseObjectsInfo/totalSum'
+                                                                        '//notDrugPurchaseObjectsInfo/totalSum',
+                                                                        '//ns5:drugPurchaseObjectsInfo/ns4:total',
+                                                                        '//drugPurchaseObjectsInfo/total'
                                                                       ], namespaces))
 
         # Extract quantity undefined flag
         quantity_undefined = find_text_with_namespaces(doc, [
                                                          '//ns5:purchaseObjectsInfo//ns5:quantityUndefined',
-                                                         '//purchaseObjectsInfo//quantityUndefined'
+                                                         '//purchaseObjectsInfo//quantityUndefined',
+                                                         '//ns5:drugPurchaseObjectsInfo//ns5:quantityUndefined',
+                                                         '//drugPurchaseObjectsInfo//quantityUndefined'
                                                        ], namespaces) == 'true'
 
-        return {} if purchase_objects.empty? && total_sum.nil?
+        return {} if all_objects.empty? && total_sum.nil?
 
         {
-          objects: purchase_objects,
-          objects_count: purchase_objects.size,
+          objects: all_objects,
+          objects_count: all_objects.size,
           total_sum: total_sum,
-          quantity_undefined: quantity_undefined
+          quantity_undefined: quantity_undefined,
+          drug_objects_count: drug_objects.size,
+          regular_objects_count: purchase_objects.size
         }.compact
       rescue StandardError => e
         log_debug "Error extracting purchase objects: #{e.message}"
@@ -630,6 +651,106 @@ module OxTenderAbstract
       object_data[:name_type] = 'product_name'
 
       object_data.compact
+    end
+
+    def extract_drug_purchase_object_data(drug_node, namespaces)
+      # Extract data from drug purchase object info
+      drug_data = {
+        sid: extract_text_from_node(drug_node, './/ns4:sid | .//sid'),
+        external_sid: extract_text_from_node(drug_node, './/ns4:externalSid | .//externalSid'),
+        name: extract_text_from_node(drug_node, './/ns4:name | .//name'),
+        price: extract_price_from_text(extract_text_from_node(drug_node, './/ns4:price | .//price')),
+        quantity: extract_text_from_node(drug_node, './/ns4:quantity/ns4:value | .//quantity/value')&.to_i,
+        sum: extract_price_from_text(extract_text_from_node(drug_node, './/ns4:sum | .//sum')),
+        type: 'drug', # Mark as drug object
+        hierarchy_type: extract_text_from_node(drug_node, './/ns4:hierarchyType | .//hierarchyType')
+      }
+
+      # Extract INN (International Nonproprietary Name) for drugs
+      inn_node = drug_node.at_xpath('.//ns4:INN | .//INN', namespaces)
+      if inn_node
+        drug_data[:inn] = {
+          code: extract_text_from_node(inn_node, './/ns2:code | .//code'),
+          name: extract_text_from_node(inn_node, './/ns2:name | .//name')
+        }
+      end
+
+      # Extract dosage form information
+      dosage_form_node = drug_node.at_xpath('.//ns4:dosageForm | .//dosageForm', namespaces)
+      if dosage_form_node
+        drug_data[:dosage_form] = {
+          code: extract_text_from_node(dosage_form_node, './/ns2:code | .//code'),
+          name: extract_text_from_node(dosage_form_node, './/ns2:name | .//name')
+        }
+      end
+
+      # OKPD2 information for drugs
+      okpd2_node = drug_node.at_xpath('.//ns4:OKPD2 | .//OKPD2', namespaces)
+      if okpd2_node
+        drug_data[:okpd2] = {
+          code: extract_text_from_node(okpd2_node, './/ns2:OKPDCode | .//OKPDCode'),
+          name: extract_text_from_node(okpd2_node, './/ns2:OKPDName | .//OKPDName')
+        }
+      end
+
+      # OKEI information (units of measurement)
+      okei_node = drug_node.at_xpath('.//ns4:OKEI | .//OKEI', namespaces)
+      if okei_node
+        drug_data[:okei] = {
+          code: extract_text_from_node(okei_node, './/ns2:code | .//code'),
+          national_code: extract_text_from_node(okei_node, './/ns2:nationalCode | .//nationalCode'),
+          name: extract_text_from_node(okei_node, './/ns2:name | .//name')
+        }
+      end
+
+      # Extract characteristics for drugs
+      characteristics_nodes = drug_node.xpath(
+        './/ns4:characteristics//ns4:characteristicsUsingReferenceInfo | .//characteristics//characteristicsUsingReferenceInfo', namespaces
+      )
+      characteristics_nodes += drug_node.xpath(
+        './/ns4:characteristics//ns4:characteristicsUsingTextForm | .//characteristics//characteristicsUsingTextForm', namespaces
+      )
+
+      if characteristics_nodes.any?
+        characteristics_details = characteristics_nodes.map do |char_node|
+          char_data = {
+            name: extract_text_from_node(char_node, './/ns4:name | .//name'),
+            type: extract_text_from_node(char_node, './/ns4:type | .//type')
+          }
+
+          # Extract values from text form characteristics
+          values_nodes = char_node.xpath('.//ns4:values/ns4:value | .//values/value', namespaces)
+          if values_nodes.any?
+            char_data[:values] = values_nodes.map do |value_node|
+              extract_text_from_node(value_node, './/ns4:qualityDescription | .//qualityDescription') ||
+                extract_text_from_node(value_node, './/ns4:textValue | .//textValue')
+            end.compact
+          end
+
+          char_data
+        end
+
+        drug_data[:characteristics] = {
+          count: characteristics_nodes.size,
+          details: characteristics_details
+        }
+      end
+
+      # Determine the product name
+      product_name = if drug_data[:name] && !drug_data[:name].empty?
+                       drug_data[:name]
+                     elsif drug_data[:inn] && drug_data[:inn][:name] && !drug_data[:inn][:name].empty?
+                       drug_data[:inn][:name]
+                     elsif drug_data[:okpd2] && drug_data[:okpd2][:name] && !drug_data[:okpd2][:name].empty?
+                       drug_data[:okpd2][:name]
+                     else
+                       'Unknown drug'
+                     end
+
+      drug_data[:product_name] = product_name
+      drug_data[:name_type] = 'drug_name'
+
+      drug_data.compact
     end
 
     private
