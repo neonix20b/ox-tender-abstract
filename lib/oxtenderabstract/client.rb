@@ -76,7 +76,7 @@ module OxTenderAbstract
 
     # Search tenders with full workflow: API -> Archive -> Parse
     def search_tenders(org_region:, exact_date:, subsystem_type: DocumentTypes::DEFAULT_SUBSYSTEM,
-                       document_type: DocumentTypes::DEFAULT_DOCUMENT_TYPE)
+                       document_type: DocumentTypes::DEFAULT_DOCUMENT_TYPE, include_attachments: true)
       log_info "Starting tender search for region #{org_region}, date #{exact_date}, subsystem: #{subsystem_type}, type: #{document_type}"
 
       # Step 1: Get archive URLs from API
@@ -132,6 +132,15 @@ module OxTenderAbstract
 
             tender_data = parse_result.data[:content]
             next if tender_data[:reestr_number].nil? || tender_data[:reestr_number].empty?
+
+            # Extract attachments if requested
+            if include_attachments
+              attachments_result = extract_attachments_from_xml(file_data[:content])
+              if attachments_result.success?
+                tender_data[:attachments] = attachments_result.data[:attachments]
+                tender_data[:attachments_count] = attachments_result.data[:total_count]
+              end
+            end
 
             # Add metadata
             tender_data[:source_file] = file_name
@@ -240,7 +249,7 @@ module OxTenderAbstract
     # Позволяет продолжить загрузку с места паузы при блокировках API
     def search_tenders_with_resume(org_region:, exact_date:, subsystem_type: DocumentTypes::DEFAULT_SUBSYSTEM,
                                    document_type: DocumentTypes::DEFAULT_DOCUMENT_TYPE,
-                                   start_from_archive: 0, resume_state: nil)
+                                   start_from_archive: 0, resume_state: nil, include_attachments: true)
       log_info "Starting tender search with resume capability for region #{org_region}, date #{exact_date}"
       log_info "Starting from archive #{start_from_archive}" if start_from_archive > 0
 
@@ -329,6 +338,15 @@ module OxTenderAbstract
 
             tender_data = parse_result.data[:content]
             next if tender_data[:reestr_number].nil? || tender_data[:reestr_number].empty?
+
+            # Extract attachments if requested
+            if include_attachments
+              attachments_result = extract_attachments_from_xml(file_data[:content])
+              if attachments_result.success?
+                tender_data[:attachments] = attachments_result.data[:attachments]
+                tender_data[:attachments_count] = attachments_result.data[:total_count]
+              end
+            end
 
             # Add metadata
             tender_data[:source_file] = file_name

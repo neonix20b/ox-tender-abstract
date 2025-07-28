@@ -29,18 +29,19 @@ module OxTenderAbstract
 
     # Convenience method for searching tenders in specific subsystem
     def search_tenders(org_region:, exact_date:, subsystem_type: DocumentTypes::DEFAULT_SUBSYSTEM,
-                       document_type: DocumentTypes::DEFAULT_DOCUMENT_TYPE)
+                       document_type: DocumentTypes::DEFAULT_DOCUMENT_TYPE, include_attachments: true)
       client = Client.new
       client.search_tenders(
         org_region: org_region,
         exact_date: exact_date,
         subsystem_type: subsystem_type,
-        document_type: document_type
+        document_type: document_type,
+        include_attachments: include_attachments
       )
     end
 
     # Enhanced method for searching tenders across multiple subsystems
-    def search_all_tenders(org_region:, exact_date:, subsystems: nil, document_types: nil)
+    def search_all_tenders(org_region:, exact_date:, subsystems: nil, document_types: nil, include_attachments: true)
       # Default subsystems to search
       subsystems ||= %w[PRIZ RPEC RPGZ BTK UR RGK OD223 RD223]
 
@@ -67,7 +68,8 @@ module OxTenderAbstract
             org_region: org_region,
             exact_date: exact_date,
             subsystem_type: subsystem_type,
-            document_type: doc_type
+            document_type: doc_type,
+            include_attachments: include_attachments
           )
 
           if result.success?
@@ -134,7 +136,8 @@ module OxTenderAbstract
 
     # Search tenders with automatic wait on API blocks and resume capability
     def search_tenders_with_auto_wait(org_region:, exact_date:, subsystem_type: DocumentTypes::DEFAULT_SUBSYSTEM,
-                                      document_type: DocumentTypes::DEFAULT_DOCUMENT_TYPE, resume_state: nil)
+                                      document_type: DocumentTypes::DEFAULT_DOCUMENT_TYPE, resume_state: nil,
+                                      include_attachments: true)
       client = Client.new
       
       # Если есть состояние для продолжения
@@ -146,7 +149,8 @@ module OxTenderAbstract
           subsystem_type: subsystem_type,
           document_type: document_type,
           start_from_archive: start_from,
-          resume_state: resume_state
+          resume_state: resume_state,
+          include_attachments: include_attachments
         )
       else
         # Используем обычный метод если авто-ожидание включено
@@ -155,7 +159,8 @@ module OxTenderAbstract
             org_region: org_region,
             exact_date: exact_date,
             subsystem_type: subsystem_type,
-            document_type: document_type
+            document_type: document_type,
+            include_attachments: include_attachments
           )
         else
           # Используем метод с возможностью продолжения
@@ -163,7 +168,8 @@ module OxTenderAbstract
             org_region: org_region,
             exact_date: exact_date,
             subsystem_type: subsystem_type,
-            document_type: document_type
+            document_type: document_type,
+            include_attachments: include_attachments
           )
         end
       end

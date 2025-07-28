@@ -1,3 +1,7 @@
+## [0.9.4] - 2025-07-28
+
+- include_attachments
+
 ## [0.9.3] - 2025-07-27
 
 - Added support for parsing tender documents
