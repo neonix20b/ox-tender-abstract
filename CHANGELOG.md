@@ -1,6 +1,20 @@
-## [0.9.4] - 2025-07-28
+## [0.9.5] - 2025-08-06
 
-- include_attachments
+### Fixed
+
+- Fixed encoding compatibility error when processing API blocking messages
+- Fixed missing `include_attachments` parameter in `search_tenders` and `search_tenders_with_auto_wait` methods
+- Improved error handling for binary response data from API
+
+### Changed
+
+- Enhanced encoding handling in `ArchiveProcessor` to safely handle UTF-8 and BINARY responses
+- Restored `include_attachments` parameter to all search methods with default value `true`
+
+### Added
+
+- Better error logging for encoding issues
+- Safe encoding conversion using `force_encoding('UTF-8').scrub`
 
 ## [0.9.3] - 2025-07-27
 

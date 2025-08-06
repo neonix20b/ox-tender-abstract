@@ -88,8 +88,12 @@ module OxTenderAbstract
             log_warn "Download attempt #{attempt} failed: #{last_error}"
           end
         rescue StandardError => e
-          last_error = e.message
-          log_error "Download attempt #{attempt} exception: #{last_error}"
+          last_error = begin
+            e.message.force_encoding('UTF-8').scrub
+          rescue StandardError
+            e.message.to_s
+          end
+          log_error "Download error details: #{e.class} - #{last_error}"
         end
 
         if attempt < MAX_RETRY_ATTEMPTS
@@ -128,34 +132,42 @@ module OxTenderAbstract
         unless response.is_a?(Net::HTTPSuccess)
           error_msg = "HTTP error: #{response.code} #{response.message}"
           if response.body && !response.body.empty?
-            # Log first part of response body for debugging
-            body_preview = response.body[0..500]
-            log_error "Response body preview: #{body_preview}"
-            error_msg += ". Response: #{body_preview[0..100]}"
+            # Log first part of response body for debugging - safely handle encoding
+            begin
+              body_preview = response.body.force_encoding('UTF-8').scrub[0..500]
+              log_error "Response body preview: #{body_preview}"
+              error_msg += ". Response: #{body_preview[0..100]}"
+            rescue StandardError => e
+              log_error "Response body encoding error: #{e.message}"
+              error_msg += '. Response body unreadable (encoding issue)'
+            end
           end
           return Result.failure(error_msg)
         end
 
-        # Check for download blocking message in successful response
-        if response.body&.include?('Скачивание архива по данной ссылке заблокировано')
-          if OxTenderAbstract.configuration.auto_wait_on_block
-            wait_time = OxTenderAbstract.configuration.block_wait_time
-            log_error "Archive download blocked. Auto-waiting for #{wait_time} seconds..."
+        # Check for download blocking message in successful response - safely handle encoding
+        begin
+          response_text = response.body&.force_encoding('UTF-8')&.scrub
+          if response_text&.include?('Скачивание архива по данной ссылке заблокировано')
+            if OxTenderAbstract.configuration.auto_wait_on_block
+              wait_time = OxTenderAbstract.configuration.block_wait_time
+              log_error "Archive download blocked. Auto-waiting for #{wait_time} seconds..."
 
-            # Показываем прогресс ожидания
-            show_wait_progress(wait_time)
+              # Показываем прогресс ожидания
+              show_wait_progress(wait_time)
 
-            log_info 'Wait completed, retrying download...'
-            # Рекурсивно повторяем попытку после ожидания
-            return download_to_memory(url)
-          else
-            log_error 'Archive download blocked for 10 minutes'
-            return Result.failure(
-              'Archive download blocked for 10 minutes',
-              error_type: :blocked,
-              retry_after: 600
-            )
+              log_info 'Wait completed, retrying download...'
+              # Рекурсивно повторяем попытку после ожидания
+              return download_to_memory(url)
+            else
+              # Возвращаем специальную ошибку блокировки для ручной обработки
+              return Result.failure('Archive download blocked for 10 minutes',
+                                    ArchiveBlockedError.new('Archive download blocked', 600))
+            end
           end
+        rescue StandardError => e
+          log_error "Encoding error when checking for blocking message: #{e.message}"
+          # Продолжаем обработку, так как это может быть просто архив
         end
 
         content = response.body
